@@ -65,14 +65,16 @@ jobs:
           retention-days: 7
 
       - name: Build recommended image
-        uses: ./.github/workflows/build.yml
+        uses: azdolinski/fivem/.github/workflows/build.yml@main
+        secrets: inherit
         with:
           build: ${{ steps.check.outputs.recommended }}
           is_latest: false
           force: ${{ inputs.force == 'true' }}
 
       - name: Build latest image
-        uses: ./.github/workflows/build.yml
+        uses: azdolinski/fivem/.github/workflows/build.yml@main
+        secrets: inherit
         with:
           build: ${{ steps.check.outputs.latest }}
           is_latest: true
