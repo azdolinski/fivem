@@ -5,11 +5,14 @@
 
 services:
   fxserver:
-    build: .
+    #image: ghcr.io/azdolinski/fivem:latest
     image: local/fxserver:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: ${CONTAINER_NAME:-fxserver}
     restart: unless-stopped
-    # FXServer crashes without an interactive TTY (spritsail/fivem issue #3)
+    # FXServer crashes without an interactive TTY, even when run in detached mode, so we need these options enabled.
     stdin_open: true
     tty: true
     environment:
@@ -27,7 +30,7 @@ services:
     ports:
       - "${SV_ENDPOINT_PORT:-30120}:30120/tcp"
       - "${SV_ENDPOINT_PORT:-30120}:30120/udp"
-      - "${TXADMIN_PORT:-40120}:40120/tcp" # harmless if txAdmin is off
+      - "${TXADMIN_PORT:-40120}:40120/tcp"          # harmless if txAdmin is off
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f FXServer >/dev/null || exit 1"]
       interval: 30s
