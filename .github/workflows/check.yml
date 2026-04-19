@@ -70,7 +70,6 @@ jobs:
           build: ${{ steps.check.outputs.recommended }}
           is_latest: false
           force: ${{ inputs.force == 'true' }}
-        secrets: inherit
 
       - name: Build latest image
         uses: ./.github/workflows/build.yml
@@ -78,4 +77,3 @@ jobs:
           build: ${{ steps.check.outputs.latest }}
           is_latest: true
           force: ${{ inputs.force == 'true' }}
-        secrets: inherit
