@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve image name to lowercase
         id: image
@@ -108,7 +108,7 @@ jobs:
 
       - name: Log in to GitHub Container Registry
         if: steps.exists.outputs.skip != 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -116,7 +116,7 @@ jobs:
 
       - name: Set up Docker Buildx
         if: steps.exists.outputs.skip != 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Extract short build number
         if: steps.exists.outputs.skip != 'true'
@@ -127,7 +127,7 @@ jobs:
       - name: Extract Docker metadata
         if: steps.exists.outputs.skip != 'true'
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.image.outputs.full }}
           tags: |
@@ -139,7 +139,7 @@ jobs:
 
       - name: Build and push Docker image
         if: steps.exists.outputs.skip != 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
