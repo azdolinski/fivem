@@ -1,0 +1,164 @@
+name: Build Docker Image
+
+on:
+  workflow_call:
+    inputs:
+      build:
+        description: 'Build version string (e.g. 25770-8ddccd4e4dfd6a760ce18651656463f961cc4761)'
+        required: true
+        type: string
+      is_latest:
+        description: 'Whether to also tag as latest'
+        required: false
+        type: boolean
+        default: false
+      force:
+        description: 'Force rebuild even if image exists'
+        required: false
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      build:
+        description: 'Build version string (e.g. 25770-8ddccd4e4dfd6a760ce18651656463f961cc4761)'
+        required: true
+        type: string
+      is_latest:
+        description: 'Also tag as latest'
+        required: false
+        type: boolean
+        default: false
+      force:
+        description: 'Force rebuild even if image exists'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/fivem
+
+jobs:
+  build:
+    name: Build ${{ inputs.build }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve image name to lowercase
+        id: image
+        run: |
+          LOWER_NAME=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          echo "name=${LOWER_NAME}" >> "$GITHUB_OUTPUT"
+          echo "full=${{ env.REGISTRY }}/${LOWER_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Check if image already exists
+        id: exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BUILD_EXISTS="false"
+          LATEST_EXISTS="false"
+
+          # Check build-specific tag
+          BUILD_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.oci.image.index.v1+json" \
+            "https://${{ steps.image.outputs.full }}/manifests/${{ inputs.build }}")
+
+          [[ "$BUILD_STATUS" == "200" ]] && BUILD_EXISTS="true"
+
+          # Check latest tag (only if is_latest)
+          if [[ "${{ inputs.is_latest }}" == "true" ]]; then
+            LATEST_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.oci.image.index.v1+json" \
+              "https://${{ steps.image.outputs.full }}/manifests/latest")
+
+            [[ "$LATEST_STATUS" == "200" ]] && LATEST_EXISTS="true"
+          fi
+
+          echo "build_exists=${BUILD_EXISTS}" >> "$GITHUB_OUTPUT"
+          echo "latest_exists=${LATEST_EXISTS}" >> "$GITHUB_OUTPUT"
+
+          # Determine if we should skip
+          if [[ "$BUILD_EXISTS" == "true" && "${{ inputs.force }}" != "true" ]]; then
+            if [[ "${{ inputs.is_latest }}" == "true" && "$LATEST_EXISTS" != "true" ]]; then
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "Checked ${{ steps.image.outputs.full }}:${{ inputs.build }} -- build_exists=${BUILD_EXISTS}, latest_exists=${LATEST_EXISTS}, skip=$(cat "$GITHUB_OUTPUT" | grep '^skip=' | cut -d= -f2)"
+
+      - name: Skip - image already exists
+        if: steps.exists.outputs.skip == 'true'
+        run: |
+          echo "Image ${{ steps.image.outputs.full }}:${{ inputs.build }} already exists in GHCR."
+          echo "Build skipped. Use force=true to rebuild."
+          echo "::notice title=Skipped::Image ${{ inputs.build }} already exists in GHCR"
+
+      - name: Log in to GitHub Container Registry
+        if: steps.exists.outputs.skip != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        if: steps.exists.outputs.skip != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract Docker metadata
+        if: steps.exists.outputs.skip != 'true'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.full }}
+          tags: |
+            type=raw,value=${{ inputs.build }}
+            ${{ inputs.is_latest == true && 'type=raw,value=latest' || '' }}
+          labels: |
+            io.cfx.fxserver.version=${{ inputs.build }}
+
+      - name: Build and push Docker image
+        if: steps.exists.outputs.skip != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          build-args: |
+            FXSERVER_VER=${{ inputs.build }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: Update latest tag (image exists, only retag)
+        if: steps.exists.outputs.build_exists == 'true' && steps.exists.outputs.skip != 'true' && inputs.is_latest == true
+        run: |
+          docker pull "${{ steps.image.outputs.full }}:${{ inputs.build }}"
+          docker tag "${{ steps.image.outputs.full }}:${{ inputs.build }}" "${{ steps.image.outputs.full }}:latest"
+          docker push "${{ steps.image.outputs.full }}:latest"
+          echo "::notice::Updated latest tag to point to ${{ inputs.build }}"
+
+      - name: Build summary
+        if: steps.exists.outputs.skip != 'true'
+        run: |
+          echo "### Build Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image | \`${{ steps.image.outputs.full }}:${{ inputs.build }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tagged as latest | \`${{ inputs.is_latest }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Force rebuild | \`${{ inputs.force }}\` |" >> "$GITHUB_STEP_SUMMARY"

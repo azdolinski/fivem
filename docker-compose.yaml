@@ -1,0 +1,36 @@
+# Build once, run FiveM or RedM by flipping GAME in .env.
+# Usage:
+#   cp .env.example .env && edit
+#   docker compose --profile fivem up -d     # OR: --profile redm
+
+services:
+  fxserver:
+    build: .
+    image: local/fxserver:latest
+    container_name: ${CONTAINER_NAME:-fxserver}
+    restart: unless-stopped
+    # FXServer crashes without an interactive TTY (spritsail/fivem issue #3)
+    stdin_open: true
+    tty: true
+    environment:
+      GAME: ${GAME:-fivem}                 # fivem | redm
+      LICENSE_KEY: ${LICENSE_KEY:?license key required, get one at https://portal.cfx.re}
+      SV_HOSTNAME: ${SV_HOSTNAME:-My FXServer}
+      SV_MAXCLIENTS: ${SV_MAXCLIENTS:-32}
+      SV_ENFORCE_GAME_BUILD: ${SV_ENFORCE_GAME_BUILD:-}
+      RCON_PASSWORD: ${RCON_PASSWORD:-}
+      NO_DEFAULT_CONFIG: ${NO_DEFAULT_CONFIG:-}     # set to 1 to use txAdmin
+      EXTRA_ARGS: ${EXTRA_ARGS:-}
+    volumes:
+      - ./data/config:/config
+      - ./data/txData:/txData             # used only when NO_DEFAULT_CONFIG=1
+    ports:
+      - "${SV_ENDPOINT_PORT:-30120}:30120/tcp"
+      - "${SV_ENDPOINT_PORT:-30120}:30120/udp"
+      - "${TXADMIN_PORT:-40120}:40120/tcp" # harmless if txAdmin is off
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f FXServer >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
