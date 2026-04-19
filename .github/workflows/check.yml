@@ -22,9 +22,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  check-and-build:
-    name: Check and Build
+  check:
+    name: Check FiveM artifacts
     runs-on: ubuntu-latest
+    outputs:
+      recommended: ${{ steps.check.outputs.recommended }}
+      latest: ${{ steps.check.outputs.latest }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -64,18 +67,20 @@ jobs:
           path: build-info.json
           retention-days: 7
 
-      - name: Build recommended image
-        uses: azdolinski/fivem/.github/workflows/build.yml@main
-        secrets: inherit
-        with:
-          build: ${{ steps.check.outputs.recommended }}
-          is_latest: false
-          force: ${{ inputs.force == 'true' }}
+  build-recommended:
+    needs: check
+    uses: azdolinski/fivem/.github/workflows/build.yml@main
+    with:
+      build: ${{ needs.check.outputs.recommended }}
+      is_latest: false
+      force: ${{ inputs.force == 'true' }}
+    secrets: inherit
 
-      - name: Build latest image
-        uses: azdolinski/fivem/.github/workflows/build.yml@main
-        secrets: inherit
-        with:
-          build: ${{ steps.check.outputs.latest }}
-          is_latest: true
-          force: ${{ inputs.force == 'true' }}
+  build-latest:
+    needs: check
+    uses: azdolinski/fivem/.github/workflows/build.yml@main
+    with:
+      build: ${{ needs.check.outputs.latest }}
+      is_latest: true
+      force: ${{ inputs.force == 'true' }}
+    secrets: inherit
