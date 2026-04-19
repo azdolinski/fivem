@@ -118,6 +118,12 @@ jobs:
         if: steps.exists.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v3
 
+      - name: Extract short build number
+        if: steps.exists.outputs.skip != 'true'
+        id: short
+        run: |
+          echo "num=$(echo '${{ inputs.build }}' | cut -d- -f1)" >> "$GITHUB_OUTPUT"
+
       - name: Extract Docker metadata
         if: steps.exists.outputs.skip != 'true'
         id: meta
@@ -126,6 +132,7 @@ jobs:
           images: ${{ steps.image.outputs.full }}
           tags: |
             type=raw,value=${{ inputs.build }}
+            type=raw,value=${{ steps.short.outputs.num }}
             ${{ inputs.is_latest == true && 'type=raw,value=latest' || '' }}
           labels: |
             io.cfx.fxserver.version=${{ inputs.build }}
